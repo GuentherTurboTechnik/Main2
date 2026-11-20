@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GT15 Studio</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">GT15</span> Studio <small>EDC15VM+ / EDC15P+ · CAN</small></div>
+  <div class="status">
+    <span id="stIface" class="pill">Getrennt</span>
+    <span id="stPage" class="pill hidden">Seite: Flash</span>
+    <span id="stDaq" class="pill hidden">DAQ</span>
+    <span id="stLog" class="pill rec hidden">● REC</span>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="conn" class="active">Verbindung</button>
+  <button data-tab="live">Live-Daten</button>
+  <button data-tab="maps">Kennfelder</button>
+  <button data-tab="log">Logging</button>
+  <button data-tab="flash">Flashen</button>
+  <button data-tab="mon">Bus-Monitor</button>
+</nav>
+
+<main>
+<!-- ================= Verbindung ================= -->
+<section id="tab-conn" class="tab active">
+  <div class="grid2">
+    <div class="card">
+      <h2>Interface</h2>
+      <label>Schnittstelle
+        <select id="ifaceSel">
+          <option value="slcan">CANable (SLCAN über Web Serial)</option>
+          <option value="sim">Simulator (virtuelles EDC15)</option>
+        </select>
+      </label>
+      <label>Bitrate
+        <select id="bitrateSel">
+          <option value="6" selected>500 kbit/s (Antriebs-CAN)</option>
+          <option value="5">250 kbit/s</option>
+          <option value="4">125 kbit/s</option>
+          <option value="8">1 Mbit/s</option>
+        </select>
+      </label>
+      <div class="row ids">
+        <label>REQ <input id="idReq" value="6E0" maxlength="3"></label>
+        <label>BULK <input id="idBulk" value="6E1" maxlength="3"></label>
+        <label>RES <input id="idRes" value="6E8" maxlength="3"></label>
+        <label>DAQ <input id="idDaq" value="6E9" maxlength="3"></label>
+      </div>
+      <div class="row">
+        <button id="btnConnect" class="primary">Verbinden</button>
+        <button id="btnDisconnect" disabled>Trennen</button>
+      </div>
+      <p id="serialHint" class="hint"></p>
+    </div>
+    <div class="card">
+      <h2>Steuergerät</h2>
+      <dl class="kv" id="ecuInfo">
+        <dt>Kennung</dt><dd id="ecuIdent">–</dd>
+        <dt>Firmware-Patch</dt><dd id="ecuVer">–</dd>
+        <dt>Funktionen</dt><dd id="ecuCaps">–</dd>
+        <dt>Modus</dt><dd id="ecuMode">–</dd>
+        <dt>Overlays</dt><dd id="ecuOvl">–</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>Definitionsdatei</h2>
+      <p class="hint">Beschreibt Messkanäle, Kennfelder, Achsen, Trace-Slots und Sektoren für die jeweilige Software-Version.</p>
+      <p>Aktiv: <b id="defName">–</b></p>
+      <div class="row">
+        <label class="btn">Laden (.json)<input type="file" id="defFile" accept=".json" hidden></label>
+        <button id="btnDefSim">Simulator-Beispiel</button>
+        <button id="btnDefSave">Exportieren</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Hinweise</h2>
+      <ul class="hint">
+        <li>Browser: Chrome oder Edge (Web Serial). Seite per <code>file://</code> oder <code>localhost</code> öffnen.</li>
+        <li>CANable mit <b>slcan</b>-Firmware (nicht candleLight) direkt am Antriebs-CAN (CAN-H/CAN-L) anschließen.</li>
+        <li>Das Steuergerät muss die GT15-Patch-Firmware enthalten (Erstinstallation über K-Line/BSL).</li>
+        <li>Flashen nur bei Zündung an, Motor aus und stabiler Bordspannung (Ladegerät anschließen).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Live ================= -->
+<section id="tab-live" class="tab">
+  <div class="toolbar">
+    <label>Rate <select id="daqRate"><option>10</option><option selected>20</option><option>50</option><option>100</option></select> ms</label>
+    <button id="btnDaq" class="primary" disabled>DAQ starten</button>
+    <span id="daqStats" class="muted"></span>
+    <span class="spacer"></span>
+    <div id="simPanel" class="simpanel hidden">
+      <b>Simulator:</b>
+      <label><input type="checkbox" id="simEngine" checked> Motor an</label>
+      <label>Pedal <input type="range" id="simPedal" min="0" max="100" value="0"> <span id="simPedalV">0 %</span></label>
+    </div>
+  </div>
+  <div id="tiles" class="tiles"></div>
+  <div class="card chartcard">
+    <div class="row"><b>Verlauf (30 s)</b><span class="spacer"></span><span id="chartLegend" class="legend"></span></div>
+    <canvas id="chart"></canvas>
+  </div>
+</section>
+
+<!-- ================= Kennfelder ================= -->
+<section id="tab-maps" class="tab">
+  <div class="mapsLayout">
+    <aside class="card maplist">
+      <h2>Kennfelder</h2>
+      <ul id="mapList"></ul>
+    </aside>
+    <div class="mapMain">
+      <div class="toolbar wrap">
+        <label>Quelle <select id="mapSrc"><option value="ecu">ECU (live)</option><option value="bin">Bin-Datei</option></select></label>
+        <button id="btnPage" disabled title="Umschalten, ob die ECU die Flash- oder RAM-Kennfelder benutzt">Seite: Flash</button>
+        <button id="btnReload">Neu laden</button>
+        <button id="btnCalInit" disabled title="Alle Overlay-Kennfelder Flash → RAM kopieren">RAM zurücksetzen</button>
+        <button id="btnRamToBin" disabled title="Aktuelle RAM-Kennfelder in die geladene Bin-Datei übernehmen">RAM → Bin</button>
+        <span class="spacer"></span>
+        <label>Schritt <input id="stepVal" type="number" value="1" step="any" class="narrow"></label>
+        <input id="setVal" type="number" step="any" placeholder="Wert" class="narrow">
+        <button id="btnSet" title="Auswahl auf Wert setzen (Enter)">=</button>
+        <button id="btnPct" title="Auswahl um Prozent ändern (Wert-Feld = %)">+%</button>
+        <label><input type="checkbox" id="traceOn" checked> Tracing</label>
+      </div>
+      <div class="card mapcard">
+        <div class="row"><b id="mapTitle">Kein Kennfeld gewählt</b><span class="spacer"></span><span id="mapInfo" class="muted"></span></div>
+        <div class="tablewrap"><table id="mapTable" tabindex="0"></table></div>
+        <p class="hint">Zellen mit Maus auswählen (Ziehen / Shift-Klick). Tasten: <kbd>+</kbd>/<kbd>-</kbd> Schritt, <kbd>Bild↑</kbd>/<kbd>Bild↓</kbd> ×10, Zahl eingeben + <kbd>Enter</kbd> setzt Wert, <kbd>Strg</kbd>+<kbd>Z</kbd> rückgängig. Geänderte Zellen sind markiert.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Logging ================= -->
+<section id="tab-log" class="tab">
+  <div class="card">
+    <h2>Datenlogger</h2>
+    <div class="row">
+      <button id="btnRec" class="primary">Aufzeichnung starten</button>
+      <button id="btnCsv" disabled>CSV exportieren</button>
+      <button id="btnLogClear">Leeren</button>
+      <label><input type="checkbox" id="logAuto"> Automatisch mit DAQ starten</label>
+    </div>
+    <p id="logInfo" class="muted">Keine Daten.</p>
+    <p class="hint">Aufgezeichnet werden alle Messkanäle der Definitionsdatei mit Zeitstempel (ms). Die CSV lässt sich in Excel, LibreOffice oder Log-Viewern öffnen (Trennzeichen Semikolon).</p>
+  </div>
+  <div class="card"><canvas id="logChart" style="height:260px"></canvas></div>
+</section>
+
+<!-- ================= Flashen ================= -->
+<section id="tab-flash" class="tab">
+  <div class="grid2">
+    <div class="card">
+      <h2>Bin-Datei</h2>
+      <div class="row">
+        <label class="btn">Bin laden<input type="file" id="binFile" accept=".bin,.ori,.mod" hidden></label>
+        <button id="btnBinSave" disabled>Bin speichern</button>
+        <button id="btnReadFlash" disabled>Flash aus ECU lesen</button>
+      </div>
+      <dl class="kv">
+        <dt>Datei</dt><dd id="binName">–</dd>
+        <dt>Größe</dt><dd id="binSize">–</dd>
+        <dt>CRC32</dt><dd id="binCrc">–</dd>
+        <dt>Flash-Basis</dt><dd id="binBase">–</dd>
+      </dl>
+      <label>Bosch-Prüfsummen
+        <select id="csumSel"><option value="none">Keine Korrektur (extern korrigiert)</option></select>
+      </label>
+      <p class="hint warn">Die internen Prüfsummen der EDC15-Software müssen stimmen, sonst startet das Steuergerät nicht oder läuft im Notlauf. Korrektur-Module können später als Plugin ergänzt werden.</p>
+    </div>
+    <div class="card">
+      <h2>Flash-Ablauf</h2>
+      <div class="row">
+        <button id="btnCompare" disabled>Mit ECU vergleichen</button>
+        <button id="btnFlash" class="danger" disabled>Flashen</button>
+        <label><input type="checkbox" id="onlyChanged" checked> Nur geänderte Sektoren</label>
+      </div>
+      <div class="progress"><div id="flashBar"></div></div>
+      <p id="flashState" class="muted">Bereit.</p>
+      <table class="sectors" id="sectorTable"></table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Protokoll</h2>
+    <pre id="flashLog" class="log"></pre>
+  </div>
+</section>
+
+<!-- ================= Bus-Monitor ================= -->
+<section id="tab-mon" class="tab">
+  <div class="toolbar">
+    <label><input type="checkbox" id="monOn"> Aufzeichnen</label>
+    <label>Filter-ID <input id="monFilter" placeholder="z.B. 6E8" class="narrow"></label>
+    <label><input type="checkbox" id="monHideDaq" checked> DAQ ausblenden</label>
+    <button id="monClear">Leeren</button>
+    <label class="spacer"></label>
+    <label>Senden: ID <input id="txId" value="6E0" class="narrow"></label>
+    <input id="txData" value="05 00 00 00 00 00 00 00" class="wide">
+    <button id="btnTx" disabled>Senden</button>
+  </div>
+  <pre id="monLog" class="log tall"></pre>
+</section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/util.js"></script>
+<script src="js/slcan.js"></script>
+<script src="js/protocol.js"></script>
+<script src="js/simulator.js"></script>
+<script src="js/defs.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
