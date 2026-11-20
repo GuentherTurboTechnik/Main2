@@ -87,6 +87,7 @@ button.danger { background: var(--danger); border-color: var(--danger); color: #
 #mapTable td { padding: 4px 8px; text-align: right; border: 1px solid var(--border); position: relative; min-width: 58px; color: #111; }
 #mapTable td.sel { outline: 2px solid var(--cell-sel); outline-offset: -2px; }
 #mapTable td.chg::after { content: ""; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%; background: #111; }
+#mapTable td .trl { position: absolute; inset: 0; background: var(--trace); pointer-events: none; }
 #mapTable td .tr { position: absolute; inset: 0; border: 3px solid var(--trace); pointer-events: none; }
 #mapTable th.tx { background: var(--trace); color: #fff; }
 .progress { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; margin: 10px 0 6px; }

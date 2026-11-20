@@ -9,10 +9,10 @@ Im Tool unter *Verbindung → Simulator-Beispiel → Exportieren* bekommt man ei
   "name": "EDC15P+ 0281010XXX",
   "flashBase": "0x080000",
   "flashSize": "0x80000",
-  "sectors": [["0x080000","0x4000"], ["0x084000","0x2000"], ["0x086000","0x2000"], ["0x088000","0x8000"],
-              ["0x090000","0x10000"], ["0x0A0000","0x10000"], ["0x0B0000","0x10000"], ["0x0C0000","0x10000"],
-              ["0x0D0000","0x10000"], ["0x0E0000","0x10000"], ["0x0F0000","0x10000"]],
-  "bootSectors": ["0x080000"],
+  "sectors": [["0x080000","0x10000"], ["0x090000","0x10000"], ["0x0A0000","0x10000"], ["0x0B0000","0x10000"],
+              ["0x0C0000","0x10000"], ["0x0D0000","0x10000"], ["0x0E0000","0x10000"], ["0x0F0000","0x8000"],
+              ["0x0F8000","0x2000"], ["0x0FA000","0x2000"], ["0x0FC000","0x4000"]],
+  "bootSectors": ["0x080000", "0x090000"],
   "channels": [
     { "id": "rpm", "name": "Drehzahl", "addr": "0xF000", "size": 2, "factor": 1, "unit": "1/min", "min": 0, "max": 5000, "dec": 0 }
   ],
@@ -31,7 +31,7 @@ Im Tool unter *Verbindung → Simulator-Beispiel → Exportieren* bekommt man ei
 | Feld | Bedeutung |
 |------|-----------|
 | `flashBase` | Adresse von Byte 0 der Bin-Datei im ECU-Adressraum |
-| `sectors` | `[Start, Länge]` aller Flash-Sektoren (Chip-Typ beachten: Bottom-/Top-Boot) |
+| `sectors` | `[Start, Länge]` aller Flash-Sektoren, angezeigt als B0…B10. Standard: AM29F400BT (Top-Boot). Frühe Geräte mit M29F400BB haben ein anderes Layout! |
 | `bootSectors` | Werden nie gelöscht oder beschrieben |
 | `channels[]` | Messwerte: `phys = roh * factor + offset`, `size` 1/2/4, `signed` |
 | `maps[].data` | Startadresse der Kennfeld-Werte (zeilenweise, Y-Zeilen × X-Spalten, Little Endian) |

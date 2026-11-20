@@ -25,6 +25,34 @@ Sprünge in diesen Code eingesetzt (Hooks).
 | `src/gt15_cfg_example.c` | Beispiel: Kennung + Overlay-Tabelle (Platzhalter-Adressen!) |
 | `test/host_test.c` | Host-Test mit emuliertem Speicher/Flash/CAN (`make test`) |
 
+## Basis-Image pro Familie (wie RACE15)
+
+Nicht jeder SW-Stand wird einzeln gepatcht. Pro ECU-Gruppe wird **ein** Original-Stand als
+Basis gewählt und einmal gepatcht. Alle Steuergeräte der Gruppe bekommen dieses Image:
+
+| Gruppe | Familie | Motoren | Basis (von uns) |
+|---|---|---|---|
+| 038906012 | EDC15VM+ | 1.9 TDI VP 90/110 PS (z.B. ALH) | ALH-Datenstand |
+| 038906019 | EDC15P+ | 1.9 TDI PD 100–160 PS (z.B. AVF) | AVF-Datenstand |
+| 074906018 | EDC15VM+ | 2.5 TDI VP | später |
+
+Vorteil: Einsprungstellen, Kennfeld-Adressen, Definitionsdatei und Prüfsummen werden nur einmal
+gepflegt. Fahrzeugspezifisches (MAP-Sensor, Injektoren …) wird über Kennfelder/Schalter eingestellt.
+
+## Flash-Aufteilung (AM29F400BT)
+
+| Sektor | Inhalt | per CAN beschreibbar |
+|---|---|---|
+| B0, B1 (je 64 KB) | Reset-Vektoren, Start-Code, **GT15-CAN-Loader** | nein |
+| B2–B10 | Applikation und Kalibrierung | ja |
+
+Beim Start prüft der Loader die Gültigkeit der Applikation (CRC über B2–B10 bzw. Marker). Ist
+sie ungültig (z.B. unterbrochenes Flashen), bleibt die ECU im Loader und meldet `MODE = 1`.
+GT15 Studio erkennt das beim Verbinden und setzt den Flashvorgang fort.
+
+> M29F400BB (Bottom-Boot, in manchen frühen Geräten) hat ein anderes Sektor-Layout und wird
+> für CAN-Flash vorerst nicht unterstützt, genau wie bei RACE15.
+
 ## Schritte für ein echtes Steuergerät
 
 1. **Original sichern:** Den Dump per K-Line/BSL auslesen (z.B. mit NefMoto, Galletto
@@ -46,8 +74,11 @@ Sprünge in diesen Code eingesetzt (Hooks).
    wird nie gelöscht. Fällt der Flash-Vorgang aus, bleibt die ECU im Bootloader
    ansprechbar. Als letzte Rettung bleibt immer der C167-BSL über K-Line.
 5. **Bauen:** Mit Keil C166 oder Tasking für die freie Flash-Adresse linken und
-   Hooks per Hex-Patch setzen. Danach die **Bosch-Prüfsummen** korrigieren.
-6. **Erstinstallation** über K-Line/BSL. Ab dann läuft alles über CAN mit GT15 Studio.
+   Hooks per Hex-Patch setzen. Danach die **Bosch-Prüfsummen** korrigieren. Im Image die
+   Prüfsummenprüfung so anpassen, dass spätere Kalibrieränderungen per CAN ohne externe
+   Korrektur laufen.
+6. **Erstinstallation** über K-Line (KWP2000 im normalen Betrieb, wie RACE15) oder BSL.
+   Ab dann läuft alles über CAN mit GT15 Studio.
 7. **Definitionsdatei** (`docs/DEFINITIONS.md`) für diese SW-Version erstellen.
 
 ## Hinweise

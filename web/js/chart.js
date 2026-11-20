@@ -10,7 +10,7 @@ GT.LineChart = class {
   }
 
   /** series: [{name, color, min, max, unit, pts:[[t,v],...]}], tStart/tEnd in ms */
-  draw(series, tStart, tEnd) {
+  draw(series, tStart, tEnd, cursorT = null) {
     const c = this.c, dpr = window.devicePixelRatio || 1;
     const w = c.clientWidth, h = c.clientHeight;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
@@ -41,6 +41,11 @@ GT.LineChart = class {
         if (first) { g.moveTo(x, y); first = false; } else g.lineTo(x, y);
       }
       g.stroke();
+    }
+    if (cursorT != null) {
+      const x = L + ((cursorT - tStart) / span) * pw;
+      g.strokeStyle = cs.getPropertyValue('--trace').trim(); g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
     }
   }
 };

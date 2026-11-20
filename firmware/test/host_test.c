@@ -21,9 +21,9 @@ const uint8_t gt15_overlay_count = 1;
 const char gt15_ident[] = "GT15-HOST 0281010000 TEST";
 
 static const uint32_t sectors[][2] = {
-    {0x080000, 0x4000}, {0x084000, 0x2000}, {0x086000, 0x2000}, {0x088000, 0x8000},
-    {0x090000, 0x10000}, {0x0A0000, 0x10000}, {0x0B0000, 0x10000}, {0x0C0000, 0x10000},
-    {0x0D0000, 0x10000}, {0x0E0000, 0x10000}, {0x0F0000, 0x10000},
+    {0x080000, 0x10000}, {0x090000, 0x10000}, {0x0A0000, 0x10000}, {0x0B0000, 0x10000},
+    {0x0C0000, 0x10000}, {0x0D0000, 0x10000}, {0x0E0000, 0x10000}, {0x0F0000, 0x8000},
+    {0x0F8000, 0x2000}, {0x0FA000, 0x2000}, {0x0FC000, 0x4000},
 };
 #define NSEC (sizeof(sectors) / sizeof(sectors[0]))
 
@@ -46,13 +46,13 @@ uint16_t hal_random(void) { return 0x1234; }
 uint8_t hal_sector_info(uint32_t a, uint32_t *len, uint8_t *boot)
 {
     unsigned i;
-    for (i = 0; i < NSEC; i++) if (sectors[i][0] == a) { *len = sectors[i][1]; *boot = (i == 0); return 0; }
+    for (i = 0; i < NSEC; i++) if (sectors[i][0] == a) { *len = sectors[i][1]; *boot = (i < 2);   /* B0/B1 = Bootloader */ return 0; }
     return 1;
 }
 uint8_t hal_flash_range_ok(uint32_t a, uint32_t len, uint8_t allow_boot)
 {
     if (a < FLASH_BASE || a + len > FLASH_BASE + FLASH_SIZE) return 0;
-    if (!allow_boot && a < sectors[0][0] + sectors[0][1]) return 0;
+    if (!allow_boot && a < sectors[2][0]) return 0;
     return 1;
 }
 void hal_enter_boot(void) {}

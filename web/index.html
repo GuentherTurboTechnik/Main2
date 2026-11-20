@@ -93,7 +93,7 @@
 <!-- ================= Live ================= -->
 <section id="tab-live" class="tab">
   <div class="toolbar">
-    <label>Rate <select id="daqRate"><option>10</option><option selected>20</option><option>50</option><option>100</option></select> ms</label>
+    <label>Rate <select id="daqRate"><option value="20" selected>50 Hz</option><option value="50">20 Hz</option><option value="100">10 Hz</option></select></label>
     <button id="btnDaq" class="primary" disabled>DAQ starten</button>
     <span id="daqStats" class="muted"></span>
     <span class="spacer"></span>
@@ -130,6 +130,7 @@
         <button id="btnSet" title="Auswahl auf Wert setzen (Enter)">=</button>
         <button id="btnPct" title="Auswahl um Prozent ändern (Wert-Feld = %)">+%</button>
         <label><input type="checkbox" id="traceOn" checked> Tracing</label>
+        <label title="Dauer der Spur in Sekunden (0 = aus)">Spur <input id="trailSec" type="number" value="3" min="0" max="30" step="1" class="narrow"> s</label>
       </div>
       <div class="card mapcard">
         <div class="row"><b id="mapTitle">Kein Kennfeld gewählt</b><span class="spacer"></span><span id="mapInfo" class="muted"></span></div>
@@ -153,7 +154,16 @@
     <p id="logInfo" class="muted">Keine Daten.</p>
     <p class="hint">Aufgezeichnet werden alle Messkanäle der Definitionsdatei mit Zeitstempel (ms). Die CSV lässt sich in Excel, LibreOffice oder Log-Viewern öffnen (Trennzeichen Semikolon).</p>
   </div>
-  <div class="card"><canvas id="logChart" style="height:260px"></canvas></div>
+  <div class="card">
+    <div class="row">
+      <b>Wiedergabe</b>
+      <button id="btnPlay" disabled>▶ Abspielen</button>
+      <input type="range" id="replayPos" min="0" max="0" value="0" disabled style="flex:1;min-width:160px">
+      <span id="replayTime" class="muted">–</span>
+    </div>
+    <p class="hint">Während der Wiedergabe zeigen Live-Kacheln und Kennfeld-Tracing die aufgezeichneten Werte (DAQ dafür stoppen).</p>
+    <canvas id="logChart" style="height:260px;width:100%;display:block"></canvas>
+  </div>
 </section>
 
 <!-- ================= Flashen ================= -->

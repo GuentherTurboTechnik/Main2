@@ -8,13 +8,14 @@ GT.SIM_DEFS = (() => {
     name: 'GT15 Simulator (EDC15P+ Beispiel)',
     flashBase: 0x080000,
     flashSize: 0x80000,
-    flashChip: 'AM29F400BB (Bottom-Boot)',
+    flashChip: 'AM29F400BT (Top-Boot)',
+    // AM29F400BT: B0..B6 je 64 KB, B7 32 KB, B8/B9 je 8 KB, B10 16 KB. B0/B1 = Bootloader (geschützt)
     sectors: [
-      [0x080000, 0x4000], [0x084000, 0x2000], [0x086000, 0x2000], [0x088000, 0x8000],
-      [0x090000, 0x10000], [0x0a0000, 0x10000], [0x0b0000, 0x10000], [0x0c0000, 0x10000],
-      [0x0d0000, 0x10000], [0x0e0000, 0x10000], [0x0f0000, 0x10000],
+      [0x080000, 0x10000], [0x090000, 0x10000], [0x0a0000, 0x10000], [0x0b0000, 0x10000],
+      [0x0c0000, 0x10000], [0x0d0000, 0x10000], [0x0e0000, 0x10000], [0x0f0000, 0x8000],
+      [0x0f8000, 0x2000], [0x0fa000, 0x2000], [0x0fc000, 0x4000],
     ],
-    bootSectors: [0x080000],
+    bootSectors: [0x080000, 0x090000],
     channels: [
       { id: 'rpm', name: 'Drehzahl', addr: 0xf000, size: 2, factor: 1, unit: '1/min', min: 0, max: 5000, dec: 0 },
       { id: 'iq', name: 'Einspritzmenge', addr: 0xf002, size: 2, factor: 0.01, unit: 'mg/H', min: 0, max: 80, dec: 1 },

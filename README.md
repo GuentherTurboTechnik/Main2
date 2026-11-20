@@ -23,8 +23,10 @@ PC (Chrome/Edge)                 USB              Fahrzeug
 
 ## Mit echter Hardware
 
-* **CANable** (oder kompatibel) mit **slcan**-Firmware, an CAN-H/CAN-L des Antriebs-CAN
-  (nicht über die OBD-Buchse, dort liegt bei EDC15-Fahrzeugen meist nur K-Line an).
+* **CANable** (oder kompatibel) mit **slcan**-Firmware, an CAN-H/CAN-L des Antriebs-CAN.
+  Am bequemsten wie bei RACE15: die vorhandenen CAN-H/CAN-L-Leitungen der OBD-Buchse auftrennen
+  und buchsenseitig auf den Antriebs-CAN des Motorsteuergeräts legen (Schaltplan beachten).
+* Flash-Chip **AM29F400BT** für CAN-Flash (frühe Geräte mit M29F400BB: Chip-Aufdruck prüfen).
 * Steuergerät mit GT15-Patch (siehe `firmware/README.md`). Erstinstallation über K-Line/BSL.
 * Passende Definitionsdatei laden (`docs/DEFINITIONS.md`).
 
@@ -39,17 +41,18 @@ PC (Chrome/Edge)                 USB              Fahrzeug
 | `firmware/` | Protokollkern in C für den C167 + Host-Tests (`make -C firmware test`) |
 | `docs/PROTOCOL.md` | Protokoll-Spezifikation |
 | `docs/DEFINITIONS.md` | Format der Definitionsdateien |
+| `docs/RACE15_VERGLEICH.md` | Vorbild RACE15 Studio: Konzepte, Vergleich, Ableitungen |
 
 ## Funktionen
 
-* **Live-Daten:** bis 112 Byte pro Zyklus bei 10–100 ms, Kacheln und 30-s-Verlauf
-* **Map-Tracing:** aktive Stützstellen mit Interpolationsgewicht im Kennfeld markiert
-* **Logging:** Aufzeichnung aller Kanäle, CSV-Export (Excel-kompatibel)
+* **Live-Daten:** bis 112 Byte pro Zyklus bei 50/20/10 Hz, Kacheln und 30-s-Verlauf
+* **Map-Tracing:** aktive Stützstellen mit Interpolationsgewicht, verblassende Spur
+* **Logging:** Aufzeichnung aller Kanäle inkl. Trace, CSV-Export, Wiedergabe mit Tracing
 * **Kennfeld-Editor:** Auswahl, +/-, setzen, Prozent, Rückgängig, Änderungsmarkierung,
   Quelle ECU (live) oder Bin-Datei
 * **Echtzeit:** RAM-Overlays mit Seitenumschaltung Flash/RAM, RAM → Bin übernehmen
 * **Flashen über CAN:** Sektorvergleich per CRC32, nur geänderte Sektoren, Blöcke mit
-  CRC16, Verifikation, Bootsektor-Schutz, Drehzahlsperre
+  CRC16, Verifikation, Schutz von B0/B1, Drehzahlsperre, Fortsetzen nach Abbruch
 * **Bus-Monitor:** Rohframes anzeigen, filtern und senden
 
 ## Offen / nächste Schritte

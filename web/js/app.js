@@ -12,6 +12,7 @@
     log: null, recording: false,
     map: null, mapData: null, mapSrc: 'ecu', sel: null, undo: [], orig: {},
     mon: [], monDirty: false,
+    trail: {}, replay: false,
   };
 
   /* ---------------- Allgemein ---------------- */
@@ -61,11 +62,13 @@
     try {
       const ids = { req: parseId($('idReq')), bulk: parseId($('idBulk')), res: parseId($('idRes')), daq: parseId($('idDaq')) };
       if ($('ifaceSel').value === 'sim') {
-        S.ecu = new GT.VirtualEcu(GT.SIM_DEFS);
+        // Simulator behält seinen Zustand über Trennen/Verbinden (wie ein echtes Steuergerät)
+        if (!S.ecu) S.ecu = new GT.VirtualEcu(GT.SIM_DEFS);
         S.ecu.ids = ids;
         S.transport = new GT.SimTransport(S.ecu);
         if (!S.defs || S.defs.name !== GT.SIM_DEFS.name) setDefs(GT.SIM_DEFS);
       } else {
+        if (S.ecu) S.ecu.stop();
         S.ecu = null;
         S.transport = new GT.SlcanTransport();
         S.transport.onError = (m) => toast(m, true);
@@ -77,14 +80,21 @@
       S.client.onMonitor = onMonitor;
       $('stIface').textContent = 'Verbinde …';
       const info = await S.client.connect();
-      S.connected = true;
       $('ecuIdent').textContent = info.ident || '–';
       $('ecuVer').textContent = 'GT15-CAN ' + info.version;
       $('ecuCaps').textContent = ['DAQ', 'RAM-Overlay', 'Flash', 'Tracing'].filter((_, i) => info.caps & (1 << i)).join(', ');
+      const st = await refreshStatus();
+      if (st.mode === 1) {
+        S.connected = true; S.page = 0;
+        $('ecuOvl').textContent = '– (Bootloader)';
+        onConnected();
+        toast('ECU ist im Bootloader (unterbrochener Flashvorgang?) – im Reiter „Flashen“ fortsetzen', true);
+        document.querySelector('#tabs button[data-tab=flash]').click();
+        return;
+      }
       const ovl = await S.client.overlays();
       $('ecuOvl').textContent = ovl.length + ' Bereiche, ' + ovl.reduce((s, o) => s + o.len, 0) + ' Byte';
       await S.client.setPage(0); S.page = 0;
-      await refreshStatus();
       onConnected();
       toast('Verbunden: ' + (info.ident || 'ECU'));
     } catch (e) {
@@ -104,6 +114,7 @@
   });
 
   function onConnected() {
+    S.connected = true;
     $('stIface').textContent = S.transport.name; $('stIface').className = 'pill on';
     $('btnConnect').disabled = true; $('btnDisconnect').disabled = false;
     ['btnDaq', 'btnPage', 'btnCalInit', 'btnReadFlash', 'btnTx'].forEach((id) => { $(id).disabled = false; });
@@ -130,6 +141,7 @@
     const st = await S.client.status();
     $('ecuMode').textContent = (st.mode ? 'Bootloader' : 'Applikation') + ' · ' + st.rpm + ' 1/min';
     if (st.page !== S.page) { S.page = st.page; updatePage(); }
+    S.ecuMode = st.mode;
     return st;
   }
   setInterval(() => { if (S.connected && !S.busy) refreshStatus().catch(() => {}); }, 2000);
@@ -171,9 +183,11 @@
   $('btnDaq').addEventListener('click', async () => {
     try {
       if (S.daqOn) {
-        await S.client.daqStop(); S.daqOn = false;
+        await S.client.daqStop(); S.daqOn = false; S.trail = {};
         if (S.recording && $('logAuto').checked) stopRec();
       } else {
+        if (S.ecuMode === 1) throw new Error('ECU ist im Bootloader – erst Flashvorgang abschließen');
+        stopReplay();
         S.daqSignals = buildDaqSignals();
         const n = await S.client.daqSetup(S.daqSignals, parseInt($('daqRate').value, 10));
         S.daqOn = true;
@@ -200,12 +214,25 @@
         h.push([t, v]);
         if (h.length > 4000 || (h.length && h[0][0] < t - 32000)) h.shift();
       } else {
-        S.trace[s.map.id] = [buf[o], buf[o + 1] / 255, buf[o + 2], buf[o + 3] / 255];
+        const tr = [buf[o], buf[o + 1] / 255, buf[o + 2], buf[o + 3] / 255];
+        S.trace[s.map.id] = tr;
+        pushTrail(s.map.id, t, tr);
       }
       o += s.size;
     }
-    if (S.recording) S.log.rows.push([t - S.log.t0, ...S.log.cols.map((c) => S.values[c.id])]);
+    if (S.recording) {
+      S.log.rows.push([t - S.log.t0, ...S.log.cols.map((c) => S.values[c.id])]);
+      S.log.tr.push(S.log.maps.map((m) => S.trace[m.id] || null));
+    }
     S.uiDirty = true;
+  }
+
+  /** Spur: Position etwa alle 100 ms merken */
+  function pushTrail(id, t, tr) {
+    const a = S.trail[id] || (S.trail[id] = []);
+    if (a.length && t - a[a.length - 1].t < 100) return;
+    a.push({ t, tr });
+    while (a.length && a[0].t < t - 30000) a.shift();
   }
 
   const chart = new GT.LineChart($('chart'));
@@ -327,14 +354,32 @@
   function drawTrace() {
     const m = S.map, d = S.mapData;
     if (!m || !d) return;
-    const tr = $('traceOn').checked && S.daqOn ? S.trace[m.id] : null;
-    const key = tr ? tr.join(',') : '';
+    const active = $('traceOn').checked && (S.daqOn || S.replay);
+    const tr = active ? S.trace[m.id] : null;
+    const trailMs = (parseFloat($('trailSec').value) || 0) * 1000;
+    const trail = active && trailMs > 0 && !S.replay ? (S.trail[m.id] || []) : [];
+    const key = tr ? tr.join(',') + (trail.length ? ':' + Math.floor(performance.now() / 200) : '') : '';
     if (key === S.lastTraceKey) return;
     S.lastTraceKey = key;
     const tbl = $('mapTable');
-    tbl.querySelectorAll('.tr').forEach((e) => e.remove());
+    tbl.querySelectorAll('.tr, .trl').forEach((e) => e.remove());
     tbl.querySelectorAll('th.tx').forEach((e) => e.classList.remove('tx'));
     if (!tr) return;
+    // Spur: nächstliegende Zelle früherer Positionen, verblassend
+    const now = performance.now(), fade = new Map();
+    for (const p of trail) {
+      const age = now - p.t; if (age > trailMs) continue;
+      const r = p.tr[3] > 0.5 ? p.tr[2] + 1 : p.tr[2], c = p.tr[1] > 0.5 ? p.tr[0] + 1 : p.tr[0];
+      const k = r + ',' + c, a = 0.45 * (1 - age / trailMs);
+      if (!(fade.get(k) >= a)) fade.set(k, a);
+    }
+    for (const [k, a] of fade) {
+      const [r, c] = k.split(',');
+      const td = tbl.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
+      if (!td) continue;
+      const o = document.createElement('i'); o.className = 'trl'; o.style.opacity = a.toFixed(2);
+      td.appendChild(o);
+    }
     const [xi, xf, yi, yf] = tr;
     const cells = [[yi, xi, (1 - xf) * (1 - yf)], [yi, xi + 1, xf * (1 - yf)], [yi + 1, xi, (1 - xf) * yf], [yi + 1, xi + 1, xf * yf]];
     for (const [r, c, w] of cells) {
@@ -467,7 +512,8 @@
 
   /* ---------------- Logging ---------------- */
   function startRec() {
-    S.log = { t0: performance.now(), cols: S.defs.channels.slice(), rows: [] };
+    stopReplay();
+    S.log = { t0: performance.now(), cols: S.defs.channels.slice(), rows: [], maps: S.defs.maps.filter((m) => m.trace != null), tr: [] };
     S.recording = true;
     $('btnRec').textContent = 'Aufzeichnung stoppen';
     $('stLog').classList.remove('hidden');
@@ -482,12 +528,49 @@
   function updateLogInfo() {
     const L = S.log;
     $('btnCsv').disabled = !L || !L.rows.length;
+    const canReplay = !!L && L.rows.length > 1 && !S.recording;
+    $('btnPlay').disabled = !canReplay; $('replayPos').disabled = !canReplay;
+    if (L) $('replayPos').max = Math.max(0, L.rows.length - 1);
     if (!L || !L.rows.length) { $('logInfo').textContent = 'Keine Daten.'; return; }
     const dur = L.rows[L.rows.length - 1][0] / 1000;
     $('logInfo').textContent = `${L.rows.length} Datensätze · ${dur.toFixed(1)} s · ${L.cols.length} Kanäle${S.recording ? ' · läuft …' : ''}`;
   }
   $('btnRec').addEventListener('click', () => { if (!S.defs) return toast('Keine Definition geladen', true); S.recording ? stopRec() : startRec(); });
-  $('btnLogClear').addEventListener('click', () => { if (S.recording) stopRec(); S.log = null; updateLogInfo(); drawLogChart(); });
+  $('btnLogClear').addEventListener('click', () => { if (S.recording) stopRec(); stopReplay(); S.log = null; updateLogInfo(); drawLogChart(); });
+
+  /* Wiedergabe einer Aufzeichnung: setzt Messwerte und Trace wie live */
+  let playTimer = null;
+  function showRow(i) {
+    const L = S.log; if (!L || !L.rows[i]) return;
+    if (S.daqOn) { toast('Für die Wiedergabe zuerst DAQ stoppen', true); return; }
+    S.replay = true;
+    const row = L.rows[i];
+    L.cols.forEach((c, k) => { S.values[c.id] = row[k + 1]; });
+    L.maps.forEach((m, k) => { const tr = L.tr[i] && L.tr[i][k]; if (tr) S.trace[m.id] = tr; });
+    $('replayPos').value = i;
+    $('replayTime').textContent = (row[0] / 1000).toFixed(2) + ' s';
+    S.replayIdx = i; S.uiDirty = true;
+    drawLogChart();
+  }
+  function stopReplay() {
+    clearInterval(playTimer); playTimer = null;
+    $('btnPlay').textContent = '▶ Abspielen';
+    S.replay = false; S.replayIdx = null; S.lastTraceKey = null;
+  }
+  $('replayPos').addEventListener('input', (e) => { clearInterval(playTimer); playTimer = null; $('btnPlay').textContent = '▶ Abspielen'; showRow(+e.target.value); });
+  $('btnPlay').addEventListener('click', () => {
+    if (playTimer) { clearInterval(playTimer); playTimer = null; $('btnPlay').textContent = '▶ Abspielen'; return; }
+    const L = S.log; let i = +$('replayPos').value;
+    if (i >= L.rows.length - 1) i = 0;
+    const t0 = performance.now() - L.rows[i][0];
+    $('btnPlay').textContent = '⏸ Pause';
+    playTimer = setInterval(() => {
+      const t = performance.now() - t0;
+      while (i < L.rows.length - 1 && L.rows[i + 1][0] <= t) i++;
+      showRow(i);
+      if (i >= L.rows.length - 1) { clearInterval(playTimer); playTimer = null; $('btnPlay').textContent = '▶ Abspielen'; }
+    }, 40);
+  });
   $('btnCsv').addEventListener('click', () => {
     const L = S.log;
     const head = ['Zeit_ms', ...L.cols.map((c) => `${c.name} [${c.unit}]`)].join(';');
@@ -505,7 +588,8 @@
       const ci = S.defs.channels.findIndex((x) => x.id === c.id);
       series.push({ color: GT.COLORS[ci % GT.COLORS.length], min: c.min, max: c.max, pts: L.rows.map((r) => [r[0], r[i + 1]]) });
     });
-    logChart.draw(series, 0, Math.max(1, L.rows[L.rows.length - 1][0]));
+    const tEnd = Math.max(1, L.rows[L.rows.length - 1][0]);
+    logChart.draw(series, 0, tEnd, S.replayIdx != null ? L.rows[S.replayIdx][0] : null);
   }
 
   /* ---------------- Bin / Flash ---------------- */
@@ -549,7 +633,7 @@
   function renderSectors() {
     const t = $('sectorTable');
     if (!S.defs) { t.innerHTML = ''; return; }
-    let h = '<tr><th>#</th><th>Adresse</th><th>Größe</th><th>Bin-CRC32</th><th>ECU-CRC32</th><th>Status</th></tr>';
+    let h = '<tr><th>Sektor</th><th>Adresse</th><th>Größe</th><th>Bin-CRC32</th><th>ECU-CRC32</th><th>Status</th></tr>';
     S.defs.sectors.forEach(([a, len], i) => {
       const boot = S.defs.bootSectors.includes(a);
       let bc = '–';
@@ -559,7 +643,7 @@
       let cls = '', txt = st.txt || '';
       if (boot) { cls = 'boot'; txt = 'Bootsektor (geschützt)'; }
       else if (st.ecu != null && bc !== '–') { const same = ec === bc; cls = same ? 'same' : 'diff'; txt = txt || (same ? 'identisch' : 'abweichend'); }
-      h += `<tr class="${cls}"><td>${i}</td><td>0x${U.hex(a, 6)}</td><td>${len / 1024} KB</td><td>${bc}</td><td>${ec}</td><td>${txt}</td></tr>`;
+      h += `<tr class="${cls}"><td>B${i}</td><td>0x${U.hex(a, 6)}</td><td>${len / 1024} KB</td><td>${bc}</td><td>${ec}</td><td>${txt}</td></tr>`;
     });
     t.innerHTML = h;
   }
@@ -600,10 +684,12 @@
     if (bin.length !== D.flashSize) return fail(new Error('Bin-Größe passt nicht zur Definition'));
     if (!confirm('Steuergerät jetzt flashen?\n\n• Zündung an, Motor AUS\n• Ladegerät angeschlossen\n• Verbindung nicht trennen\n\nBosch-Prüfsummen müssen korrigiert sein!')) return;
     const t0 = performance.now();
+    fprog(0, 'Flashvorgang läuft …');
     try {
       if (S.daqOn) { await c.daqStop(); S.daqOn = false; $('btnDaq').textContent = 'DAQ starten'; $('stDaq').classList.add('hidden'); }
       const st = await c.status();
       if (st.rpm > 0) throw new Error('Motor läuft – bitte abstellen');
+      if (st.mode === 1) flog('ECU ist bereits im Bootloader – setze Flashvorgang fort (geänderte Sektoren per CRC32).');
       flog('Bootloader starten …');
       const maxBlock = Math.min(256, (await c.progEnter()) || 256) & ~1;
       flog(`Bootloader aktiv, Blockgröße ${maxBlock} Byte`);
@@ -644,7 +730,9 @@
       await c.reset();
       await U.sleep(600);
       const info = await c.connect();
-      await c.setPage(0); S.page = 0; updatePage();
+      await c.setPage(0); S.page = 0; S.ecuMode = 0; updatePage();
+      const ovl = await c.overlays();
+      $('ecuOvl').textContent = ovl.length + ' Bereiche, ' + ovl.reduce((s, o) => s + o.len, 0) + ' Byte';
       fprog(1, `Fertig in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
       flog(`Flashen erfolgreich. ECU meldet sich: ${info.ident}`);
       toast('Flashen erfolgreich');
