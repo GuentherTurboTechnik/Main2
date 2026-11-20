@@ -314,7 +314,8 @@ void gt15_can_rx(uint16_t id, const uint8_t *d, uint8_t dlc)
     }
 
     case GT15_PROG_ENTER:
-        if (hal_rpm() != 0) { err(seq, GT15_E_NOT_ALLOWED); break; }
+        /* P0 Bit0: Flashen bei laufendem Motor erlaubt (Auto Flash). hal_enter_boot() schaltet Endstufen sicher ab. */
+        if (hal_rpm() != 0 && !(p[0] & 0x01u)) { err(seq, GT15_E_NOT_ALLOWED); break; }
         g.daq_period = 0;
         g.mode = 1;
         r[0] = (uint8_t)(GT15_PROG_MAX_BLOCK >> 8); r[1] = (uint8_t)GT15_PROG_MAX_BLOCK;

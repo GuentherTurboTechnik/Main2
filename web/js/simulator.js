@@ -329,7 +329,7 @@ GT.VirtualEcu = class {
         return ok(o.addr >> 16, (o.addr >> 8) & 0xff, o.addr & 0xff, o.len >> 8, o.len & 0xff);
       }
       case C.PROG_ENTER:
-        if (this.rpm > 0) return err(0x04);
+        if (this.rpm > 0 && !(p[0] & 1)) return err(0x04);   // Bit0 = bei laufendem Motor erlaubt
         this.mode = 1; this.daqPeriod = 0; return ok(1, 0);   // MAXBLOCK 256
       case C.PROG_ERASE: {
         if (this.mode !== 1) return err(0x06);

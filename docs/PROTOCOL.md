@@ -122,7 +122,7 @@ Overlay-Werte in das Bin übernimmt und den Sektor per Flash-Ablauf neu schreibt
 
 | CMD  | Name        | Parameter                    | Antwort-Daten      |
 |------|-------------|------------------------------|--------------------|
-| 0x40 | PROG_ENTER  | –                            | `MAXBLOCK_H MAXBLOCK_L` |
+| 0x40 | PROG_ENTER  | `FLAGS` (Bit0 = bei laufendem Motor erlaubt) | `MAXBLOCK_H MAXBLOCK_L` |
 | 0x41 | PROG_ERASE  | `A2 A1 A0` (Sektorstart)     | – (vorher 0xFD pending) |
 | 0x42 | PROG_BLOCK  | `A2 A1 A0 LEN_H LEN_L`       | –                  |
 | 0x43 | PROG_COMMIT | `CRC_H CRC_L`                | – (vorher 0xFD pending) |
@@ -131,8 +131,9 @@ Overlay-Werte in das Bin übernimmt und den Sektor per Flash-Ablauf neu schreibt
 
 Ablauf:
 
-1. `PROG_ENTER` – nur bei stehendem Motor (Drehzahl 0). ECU stoppt DAQ und
-   Endstufen, springt in den Flash-Bootloader (im RAM bzw. geschützten Bootsektor).
+1. `PROG_ENTER` – standardmäßig nur bei stehendem Motor (Drehzahl 0). Mit `FLAGS` Bit0
+   auch bei laufendem Motor (**Auto Flash**, wie RACE15): Der Motor geht dabei aus bzw. setzt
+   nach dem Reset kurz aus. ECU stoppt DAQ und Endstufen, springt in den Flash-Bootloader.
 2. Pro Sektor: `CHECKSUM` vergleichen → bei Gleichheit überspringen.
 3. `PROG_ERASE` (Bootsektor wird mit NOT_ALLOWED abgelehnt).
 4. Pro Block (max. 256 Byte, gerade Länge): `PROG_BLOCK` → Tool sendet

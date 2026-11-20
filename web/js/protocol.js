@@ -189,8 +189,9 @@ GT.Client = class {
     return list;
   }
 
-  async progEnter() {
-    const r = await this.req(GT.CMD.PROG_ENTER, [], 1000);
+  /** allowRunning: Flashen bei laufendem Motor (Auto Flash, Bit0) */
+  async progEnter(allowRunning = false) {
+    const r = await this.req(GT.CMD.PROG_ENTER, [allowRunning ? 1 : 0], 1000);
     this.daqFrames = 0;
     return (r[0] << 8) | r[1];
   }

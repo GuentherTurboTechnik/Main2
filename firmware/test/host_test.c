@@ -164,8 +164,9 @@ int main(void)
     /* Flash */
     rpm = 900; r = req(GT15_PROG_ENTER, NULL, 0);
     CHECK(r && r[0] == 0xFE && r[2] == GT15_E_NOT_ALLOWED, "PROG_ENTER bei laufendem Motor abgelehnt");
-    rpm = 0; r = req(GT15_PROG_ENTER, NULL, 0);
-    CHECK(is_ok(r) && r[2] == 1 && r[3] == 0, "PROG_ENTER, Blockgröße 256");
+    p[0] = 1; r = req(GT15_PROG_ENTER, p, 1);
+    CHECK(is_ok(r) && r[2] == 1 && r[3] == 0, "PROG_ENTER mit Auto-Flash-Bit bei laufendem Motor, Blockgröße 256");
+    rpm = 0;
     p[0] = 0x08; p[1] = 0; p[2] = 0; r = req(GT15_PROG_ERASE, p, 3);
     CHECK(r && r[0] == 0xFE && r[2] == GT15_E_NOT_ALLOWED, "Bootsektor nicht löschbar");
     p[0] = 0x0D; p[1] = 0; p[2] = 0; r = req(GT15_PROG_ERASE, p, 3);

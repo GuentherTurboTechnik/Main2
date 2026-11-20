@@ -494,20 +494,20 @@
     if (!confirm('Alle RAM-Kennfelder mit den Flash-Werten überschreiben?')) return;
     try { await S.client.calInit(); toast('RAM = Flash'); S.orig = {}; if (S.map) loadMap(S.map); } catch (e) { fail(e); }
   });
-  $('btnRamToBin').addEventListener('click', async () => {
+  async function ramToBin() {
+    if (!S.bin) throw new Error('Keine Bin-Datei geladen');
+    const prev = S.page;
+    if (prev !== 1) await S.client.setPage(1);
     try {
-      if (!S.bin) throw new Error('Keine Bin-Datei geladen');
-      const prev = S.page;
-      if (prev !== 1) await S.client.setPage(1);
-      try {
-        for (const m of S.defs.maps) {
-          const bytes = await S.client.read(m.data, GT.Defs.bytes(m));
-          S.bin.set(bytes, m.data - S.defs.flashBase);
-        }
-      } finally { if (prev !== 1) await S.client.setPage(prev); }
-      updateBinInfo();
-      toast('RAM-Kennfelder ins Bin übernommen – jetzt flashen, um sie dauerhaft zu speichern');
-    } catch (e) { fail(e); }
+      for (const m of S.defs.maps) {
+        const bytes = await S.client.read(m.data, GT.Defs.bytes(m));
+        S.bin.set(bytes, m.data - S.defs.flashBase);
+      }
+    } finally { if (prev !== 1) await S.client.setPage(prev); }
+    updateBinInfo();
+  }
+  $('btnRamToBin').addEventListener('click', async () => {
+    try { await ramToBin(); toast('RAM-Kennfelder ins Bin übernommen – jetzt flashen, um sie dauerhaft zu speichern'); } catch (e) { fail(e); }
   });
 
   /* ---------------- Logging ---------------- */
@@ -608,6 +608,7 @@
     $('btnCompare').disabled = !ok; $('btnFlash').disabled = !ok;
     $('btnReadFlash').disabled = !S.connected || S.busy;
     $('btnRamToBin').disabled = !S.bin || !S.connected;
+    $('btnSave').disabled = !S.bin || S.busy;
   }
 
   $('binFile').addEventListener('change', async (e) => {
@@ -679,19 +680,32 @@
     try { await compareSectors(); flog('Sektorvergleich abgeschlossen'); } catch (e) { fail(e); }
   }));
 
-  $('btnFlash').addEventListener('click', () => withBusy(async () => {
+  $('btnFlash').addEventListener('click', () => {
+    const running = $('allowRunning').checked;
+    const msg = running
+      ? 'Steuergerät jetzt flashen?\n\n• Flashen bei laufendem Motor ist erlaubt: der ECU-Reset unterbricht kurz den Motorlauf\n• Nur auf abgesperrtem Gelände / Prüfstand, Beifahrer bedient den Laptop\n• Verbindung nicht trennen'
+      : 'Steuergerät jetzt flashen?\n\n• Zündung an, Motor AUS\n• Ladegerät angeschlossen\n• Verbindung nicht trennen';
+    if (!confirm(msg + '\n\nBosch-Prüfsummen müssen korrigiert sein!')) return;
+    flashEcu({ allowRunning: running });
+  });
+
+  /** Flash-Ablauf. auto = durch Auto Flash ausgelöst (ohne Rückfrage). */
+  function flashEcu({ allowRunning = false, auto = false } = {}) {
+    return withBusy(async () => {
     const D = S.defs, bin = S.bin, c = S.client;
     if (bin.length !== D.flashSize) return fail(new Error('Bin-Größe passt nicht zur Definition'));
-    if (!confirm('Steuergerät jetzt flashen?\n\n• Zündung an, Motor AUS\n• Ladegerät angeschlossen\n• Verbindung nicht trennen\n\nBosch-Prüfsummen müssen korrigiert sein!')) return;
     const t0 = performance.now();
-    fprog(0, 'Flashvorgang läuft …');
+    const wasDaq = S.daqOn, prevPage = S.page;
+    fprog(0, auto ? 'Auto Flash läuft …' : 'Flashvorgang läuft …');
+    if (auto) flog('Auto Flash: gespeicherte Änderungen werden übertragen');
     try {
       if (S.daqOn) { await c.daqStop(); S.daqOn = false; $('btnDaq').textContent = 'DAQ starten'; $('stDaq').classList.add('hidden'); }
       const st = await c.status();
-      if (st.rpm > 0) throw new Error('Motor läuft – bitte abstellen');
+      if (st.rpm > 0 && !allowRunning) throw new Error('Motor läuft – abstellen oder „Flashen bei laufendem Motor erlauben“ aktivieren');
+      if (st.rpm > 0) flog(`Motor läuft (${st.rpm} 1/min) – Flashen bei laufendem Motor erlaubt`);
       if (st.mode === 1) flog('ECU ist bereits im Bootloader – setze Flashvorgang fort (geänderte Sektoren per CRC32).');
       flog('Bootloader starten …');
-      const maxBlock = Math.min(256, (await c.progEnter()) || 256) & ~1;
+      const maxBlock = Math.min(256, (await c.progEnter(allowRunning)) || 256) & ~1;
       flog(`Bootloader aktiv, Blockgröße ${maxBlock} Byte`);
       const todo = [];
       for (const [a, len] of D.sectors) {
@@ -730,12 +744,17 @@
       await c.reset();
       await U.sleep(600);
       const info = await c.connect();
-      await c.setPage(0); S.page = 0; S.ecuMode = 0; updatePage();
+      // Nach dem Reset sind die RAM-Overlays = Flash. Vorherige Seite und DAQ wiederherstellen.
+      await c.setPage(prevPage); S.page = prevPage; S.ecuMode = 0; updatePage();
       const ovl = await c.overlays();
       $('ecuOvl').textContent = ovl.length + ' Bereiche, ' + ovl.reduce((s, o) => s + o.len, 0) + ' Byte';
+      if (wasDaq) {
+        await c.daqSetup(S.daqSignals, parseInt($('daqRate').value, 10));
+        S.daqOn = true; $('btnDaq').textContent = 'DAQ stoppen'; $('stDaq').classList.remove('hidden');
+      }
       fprog(1, `Fertig in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
       flog(`Flashen erfolgreich. ECU meldet sich: ${info.ident}`);
-      toast('Flashen erfolgreich');
+      toast(auto ? 'Auto Flash erfolgreich' : 'Flashen erfolgreich');
       S.orig = {};
     } catch (e) {
       flog('FEHLER: ' + e.message);
@@ -743,7 +762,27 @@
       fprog(0, 'Fehler – siehe Protokoll.');
       fail(e);
     }
-  }));
+    });
+  }
+
+  /* Auto Flash (wie RACE15): nach „Speichern“ geänderte Sektoren automatisch übertragen */
+  $('autoFlash').addEventListener('change', (e) => {
+    if (e.target.checked) {
+      if (!confirm('Auto Flash aktivieren?\n\nNach jedem Speichern werden die Änderungen sofort geflasht – auch bei laufendem Motor. Der ECU-Reset unterbricht dabei kurz den Motorlauf.\n\nNur auf abgesperrtem Gelände oder Prüfstand, Laptop bedient der Beifahrer.')) { e.target.checked = false; return; }
+      $('allowRunning').checked = true;
+    }
+    $('stAuto').classList.toggle('hidden', !e.target.checked);
+  });
+
+  $('btnSave').addEventListener('click', async () => {
+    try {
+      if (!S.bin) throw new Error('Keine Bin-Datei geladen (Reiter „Flashen“: Bin laden oder aus ECU lesen)');
+      if (S.mapSrc === 'ecu') await ramToBin();
+      updateBinInfo();
+      if ($('autoFlash').checked && S.connected && !S.busy) await flashEcu({ allowRunning: true, auto: true });
+      else toast('Gespeichert (Bin)' + (S.connected ? ' – zum Übertragen flashen oder Auto Flash aktivieren' : ''));
+    } catch (e) { fail(e); }
+  });
 
   /* ---------------- Bus-Monitor ---------------- */
   function onMonitor(dir, id, data) {

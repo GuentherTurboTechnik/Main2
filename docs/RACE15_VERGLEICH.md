@@ -20,7 +20,7 @@ nur Konzepte und Arbeitsabläufe.
 | Flash-Chip | CAN-Flash **nur AM29F400BT** (Top-Boot). M29F400BB (frühe Geräte, z.B. frühe 115-PS-P+) nur ohne CAN-Flash | Standard-Layout jetzt AM29F400BT ✓ |
 | Sektoren | B0–B10. Per CAN beschreibbar: **B2–B10** („V24 loader“) | B0/B1 geschützt, B2–B10 per CAN ✓ |
 | Unterbrochenes Flashen | Loader suchen, betroffenen Sektor mit Tune vergleichen, Job fortsetzen (B2–B10) | ✓ ECU bleibt im Loader, Tool erkennt das und setzt per CRC32-Vergleich fort |
-| Auto Flash | Gespeicherte Änderungen werden automatisch geflasht, **ECU-Reset unterbricht kurz den Motorlauf**, Bedienung durch Beifahrer | offen: bei uns Flashen nur bei Motor aus. Dafür echtes Live-Tuning über RAM-Overlay |
+| Auto Flash | Gespeicherte Änderungen werden automatisch geflasht, **ECU-Reset unterbricht kurz den Motorlauf**, Bedienung durch Beifahrer | ✓ „Speichern“ + Auto Flash, auch bei laufendem Motor (PROG_ENTER Bit0). DAQ und RAM-Seite werden nach dem Reset wiederhergestellt. Zusätzlich Live-Tuning über RAM-Overlay |
 | Prüfsummen | „korrigiert bestimmte frühe Prüfsummen beim Öffnen“, keine Garantie für alle | offen. Idee: im eigenen Image die Prüfsummenprüfung so anpassen, dass CAN-Flashen ohne Bosch-Korrektur geht |
 
 ## Funktionen
@@ -50,7 +50,8 @@ nur Konzepte und Arbeitsabläufe.
    unvollständig, bleibt die ECU im CAN-Loader und kann neu beschrieben werden.
 3. **Prüfsummenprüfung im eigenen Image anpassen**, damit Kalibrieränderungen per CAN ohne
    externe Korrektur funktionieren. Für das Original-Bin braucht es trotzdem eine Korrektur.
-4. **Interface:** CANable bleibt erste Wahl (günstig, direkt aus dem Browser). Optional
-   später J2534-Unterstützung (Openport 2.0, SM2-PRO) über ein kleines lokales Hilfsprogramm.
+4. **Interface (entschieden):** CANable bleibt Hauptweg. J2534 (Openport 2.0, SM2-PRO) kommt
+   später optional über ein kleines lokales Hilfsprogramm.
+6. **Entschieden:** Auto Flash wie RACE15, ein Basis-Image pro Gruppe (ALH → 038906012, AVF → 038906019).
 5. Nächste Tool-Funktionen nach Priorität: 3D-Ansicht, Kennfeld-Gruppen und Suche,
    Checkpoints, Zwischenablage, Fehlerspeicher, Tune Setup.
